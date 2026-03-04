@@ -1,0 +1,19 @@
+role User {
+    permissions: read, view_profile
+}
+
+role Moderator inherits User {
+    permissions: write, delete_comment
+}
+
+role Admin inherits Moderator {
+    permissions: delete, manage_roles
+}
+
+role Guest {
+    permissions: read
+}
+
+role Member inherits Guest {
+    permissions: write, comment
+}

@@ -1,0 +1,10 @@
+role Viewer {
+    permissions: read
+}
+
+role Editor inherits Viewer {
+    permissions: read, write
+}
+
+// Note: Editor redundantly redefines 'read' permission
+// inherited from Viewer - this is a redundancy that could be optimized

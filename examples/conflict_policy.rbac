@@ -1,0 +1,13 @@
+role Admin {
+    permissions: read, write, delete
+}
+
+role ReadOnly {
+    permissions: read
+}
+
+
+assign Admin to bob
+assign ReadOnly to bob
+
+//conflict bob has both roles...

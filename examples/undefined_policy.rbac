@@ -1,0 +1,5 @@
+role Admin {
+    permissions: delete
+}
+
+assign Guest to bob

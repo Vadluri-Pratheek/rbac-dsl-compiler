@@ -1,0 +1,6 @@
+role admin{
+    permissions : read,write
+}
+role manager inherits admin{
+    permissions : read
+}

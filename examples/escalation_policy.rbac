@@ -1,0 +1,15 @@
+role User {
+    permissions: read
+}
+
+role Moderator inherits User {
+    permissions: write, promote_user  // Can promote users..!
+}
+
+role Admin inherits Moderator {
+    permissions: delete
+}
+
+assign Moderator to Aswin
+
+//conflict Aswin can promote himself to Admin!!!!
