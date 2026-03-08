@@ -25,9 +25,16 @@ class SemanticAnalyzer:
         assigns = [n for n in self.ast.roles if isinstance(n, AssignmentNode)]
         conflicts = [n for n in self.ast.roles if isinstance(n, ConflictNode)]
 
+        seen_assignments = set()
         for a in assigns:
             if a.role not in self.roles:
                 self.errors.append(f"Can't assign unknown role '{a.role}' to {a.user}")
+            else:
+                key = (a.role, a.user)
+                if key in seen_assignments:
+                    self.errors.append(f"Redundant assignment of role '{a.role}' to user '{a.user}'")
+                else:
+                    seen_assignments.add(key)
 
         for c in conflicts:
             if c.role1 not in self.roles: self.errors.append(f"Conflict rule for unknown role: {c.role1}")

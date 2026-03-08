@@ -25,10 +25,13 @@ def test_semantic():
 
     assert any("undefined" in e.lower() for e in errs)
     
-    print("\nTesting inheritance loops...")
+    # ------------------------------------------------------------------
+    print("\nTesting redundancy detection...")
     ast = quick_parse("""
         role A inherits B { permissions: p }
-        role B inherits A { permissions: p }
+        role B { permissions: p }
+        assign A to Alice
+        assign A to Alice
     """)
     print("AST:", ast)
     for n in ast.roles:
@@ -36,6 +39,18 @@ def test_semantic():
     errs = analyze_program(ast)
     print("\nDetected semantic errors:", errs)
 
+    # Should flag a redundant assignment but no inheritance loops.
+    assert any("redund" in e.lower() for e in errs)
+    assert not any("loop" in e.lower() for e in errs)
+
+    # Now explicitly test a cycle scenario
+    print("\nTesting inheritance loops...")
+    ast = quick_parse("""
+        role A inherits B { permissions: p }
+        role B inherits A { permissions: p }
+    """)
+    errs = analyze_program(ast)
+    print("Loop errors:", errs)
     assert any("loop" in e.lower() for e in errs)
     
     print("Semantic tests passed.")

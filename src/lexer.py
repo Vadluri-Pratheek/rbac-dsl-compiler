@@ -100,9 +100,9 @@ if __name__ == "__main__":
                     permissions: read, write
             }
             role User {
-                    permissions: krekkfk  read
+                    permissions: krekkfk,read
             }
-            conflict Admin, User
+            assign Admin to Alice
             assign Admin to Alice
             """
 

@@ -6,7 +6,6 @@ role ReadOnly {
     permissions: read
 }
 
-
 assign Admin to bob
 assign ReadOnly to bob
 
