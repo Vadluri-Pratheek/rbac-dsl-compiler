@@ -3,27 +3,50 @@ from src.parser import RoleNode, AssignmentNode, ConflictNode
 class SemanticAnalyzer:
     def __init__(self, ast):
         self.ast = ast
-        self.roles = {n.name: n for n in ast.roles if isinstance(n, RoleNode)}
+        self.roles = {}
         self.errors = []
-
-    def check_cycle(self, name, path=None):
-        path = path or []
-        node = self.roles.get(name)
-        if not node or not node.inherits: return False
-        if node.inherits in path: return True
-        return self.check_cycle(node.inherits, path + [name])
+        
+        for node in self.ast.roles:
+            if isinstance(node, RoleNode):
+                self.roles[node.name] = node
 
     def run_checks(self):
-        # 1. Undefined roles & cycles
-        for name, node in self.roles.items():
-            if node.inherits and node.inherits not in self.roles:
-                self.errors.append(f"Role '{name}' inherits from undefined '{node.inherits}'")
-            elif self.check_cycle(name):
-                self.errors.append(f"Inheritance loop found in role '{name}'")
+        visited = set()
+        stack = set()
+        
+        def check_cycle(role_name):
+            if role_name in stack:
+                self.errors.append(f"Inheritance loop found in role '{role_name}'")
+                return True
+                
+            if role_name in visited:
+                return False
+                
+            visited.add(role_name)
+            stack.add(role_name)
+            
+            role_obj = self.roles.get(role_name)
+            if role_obj and role_obj.inherits is not None:
+                parent = role_obj.inherits
+                if parent not in self.roles:
+                    self.errors.append(f"Role '{role_name}' inherits from undefined '{parent}'")
+                else:
+                    check_cycle(parent)
+                    
+            stack.remove(role_name)
+            return False
 
-        # 2. Assign & Conflict basics
-        assigns = [n for n in self.ast.roles if isinstance(n, AssignmentNode)]
-        conflicts = [n for n in self.ast.roles if isinstance(n, ConflictNode)]
+        for role_name in self.roles:
+            check_cycle(role_name)
+
+        assigns = []
+        conflicts = []
+        
+        for node in self.ast.roles:
+            if isinstance(node, AssignmentNode):
+                assigns.append(node)
+            elif isinstance(node, ConflictNode):
+                conflicts.append(node)
 
         seen_assignments = set()
         for a in assigns:
@@ -37,11 +60,14 @@ class SemanticAnalyzer:
                     seen_assignments.add(key)
 
         for c in conflicts:
-            if c.role1 not in self.roles: self.errors.append(f"Conflict rule for unknown role: {c.role1}")
-            if c.role2 not in self.roles: self.errors.append(f"Conflict rule for unknown role: {c.role2}")
+            if c.role1 not in self.roles:
+                self.errors.append(f"Conflict rule for unknown role: {c.role1}")
+            if c.role2 not in self.roles:
+                self.errors.append(f"Conflict rule for unknown role: {c.role2}")
 
         return self.errors
 
 def analyze_program(ast):
     analyzer = SemanticAnalyzer(ast)
-    return analyzer.run_checks()
+    errors = analyzer.run_checks()
+    return errors
