@@ -4,17 +4,6 @@ from src.lexer import tokens
 class ProgramNode:
     def __init__(self, roles):
         self.roles = roles
-        
-    def __repr__(self):
-        output = "Program Node:\n"
-        count = 1
-        for role in self.roles:
-            output = output + f"  role{count}:\n"
-            role_str = str(role)
-            for line in role_str.split('\n'):
-                output = output + f"    {line}\n"
-            count = count + 1
-        return output.strip()
 
 class RoleNode:
     def __init__(self, name, permissions, inherits=None, line=None):
@@ -22,38 +11,18 @@ class RoleNode:
         self.permissions = permissions
         self.inherits = inherits
         self.line = line
-        
-    def __repr__(self):
-        output = f"name: {self.name}\n"
-        if self.inherits is not None:
-            output = output + f"inherits: {self.inherits}\n"
-        else:
-            output = output + "inherits: none\n"
-        output = output + "permissions:\n"
-        if self.permissions:
-            for perm in self.permissions:
-                output = output + f"  - {perm}\n"
-        else:
-            output = output + "  - none\n"
-        return output.strip()
 
 class AssignmentNode:
     def __init__(self, role, user, line=None):
         self.role = role
         self.user = user
         self.line = line
-        
-    def __repr__(self):
-        return f"assignment: role={self.role}, user={self.user}"
 
 class ConflictNode:
     def __init__(self, role1, role2, line=None):
         self.role1 = role1
         self.role2 = role2
         self.line = line
-        
-    def __repr__(self):
-        return f"conflict: {self.role1} vs {self.role2}"
 
 class RBACParser:
     tokens = tokens
