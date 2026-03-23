@@ -76,21 +76,6 @@ class RBACLexer:
 
         return result
 
-    def print_tokens(self, data):
-        toks = self.tokenize(data)
-
-        print("Token list:")
-        for tok in toks:
-            print(f"- {tok.type}: {tok.value}")
-        print(f"Total tokens: {len(toks)}")
-
-        if self.errors:
-            for e in self.errors:
-                print(f"- {e}")
-        else:
-            print("No lexer errors.")
-
-        return toks
 
 
 if __name__ == "__main__":
@@ -106,6 +91,4 @@ if __name__ == "__main__":
             assign Admin to Alice
             """
 
-
     print(test)
-    lexer.print_tokens(test)
