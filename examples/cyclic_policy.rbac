@@ -1,7 +1,0 @@
-role Admin inherits Moderator {
-    permissions: delete
-}
-
-role Moderator inherits Admin {
-    permissions: write
-}
