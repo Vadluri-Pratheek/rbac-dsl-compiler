@@ -1,6 +1,3 @@
-"""
-Token definitions and Lexer for RBAC DSL
-"""
 import ply.lex as lex
 
 tokens = (
@@ -26,7 +23,6 @@ reserved = {
     "to": "TO",
 }
 
-
 class RBACLexer:
     tokens = tokens
 
@@ -34,7 +30,7 @@ class RBACLexer:
     t_RBRACE = r"\}"
     t_COLON = r":"
     t_COMMA = r","
-    t_ignore = " \t"
+    t_ignore = " \t;"
 
     def __init__(self):
         self.lexer = None
@@ -49,8 +45,13 @@ class RBACLexer:
         r"\n+"
         t.lexer.lineno += len(t.value)
 
+    def t_BLOCK_COMMENT(self, t):
+        r"/\*[\s\S]*?\*/"
+        t.lexer.lineno += t.value.count("\n")
+        pass
+
     def t_COMMENT(self, t):
-        r"//.*"
+        r"(//|\#).*"
         pass
 
     def t_error(self, t):
@@ -75,20 +76,3 @@ class RBACLexer:
             result.append(tok)
 
         return result
-
-
-
-if __name__ == "__main__":
-    lexer = RBACLexer()
-    lexer.build()
-    test = """role Admin inherits User {
-                    permissions: read, write
-            }
-            role User {
-                    permissions: krekkfk,read
-            }
-            assign Admin to Alice
-            assign Admin to Alice
-            """
-
-    print(test)

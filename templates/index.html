@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RBAC DSL Policy Compiler</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+
+<header class="navbar">
+    <h1>RBAC DSL Policy Compiler</h1>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+        <label for="file-upload" class="btn btn-secondary">Upload .rbac</label>
+        <input type="file" id="file-upload" accept=".rbac,.txt" style="display:none;">
+        <button class="btn btn-secondary" onclick="loadExample()">Load Example</button>
+    </div>
+</header>
+
+<main class="grid-container">
+
+    <!-- ── Editor Pane ──────────────────────────────────────────── -->
+    <section class="pane editor-pane">
+        <div class="pane-header">
+            <h2>Policy Editor</h2>
+            <div style="display:flex;gap:.4rem;">
+                <button class="btn btn-primary" onclick="analyzePolicy()">Analyze Policy</button>
+                <button class="btn btn-warning" id="btn-fix" onclick="suggestFixes()" disabled>Suggest Fixes</button>
+            </div>
+        </div>
+
+        <!-- Standard editor (hidden when split view is shown) -->
+        <div class="editor-container" id="editor-view">
+            <div id="line-numbers"><div class="ln-row">1</div></div>
+            <div class="editor-overlays">
+                <div id="error-lines"></div>
+                <div id="syntax-highlight"></div>
+            </div>
+            <textarea id="code-editor" spellcheck="false" autocomplete="off" wrap="off"></textarea>
+        </div>
+
+        <!-- Split view for fixes -->
+        <div class="split-view" id="split-view" style="display:none;">
+            <div class="split-pane">
+                <div class="split-title">Original</div>
+                <textarea id="split-orig" readonly></textarea>
+            </div>
+            <div class="split-pane">
+                <div class="split-title">Fixed</div>
+                <textarea id="split-fixed"></textarea>
+            </div>
+        </div>
+        <div class="fix-actions" id="fix-actions" style="display:none;">
+            <span id="fix-summary-text" style="font-size:.85rem;flex:1;"></span>
+            <button class="btn btn-secondary" onclick="cancelFix()">Cancel</button>
+            <button class="btn btn-success" onclick="applyFix()">Apply &amp; Re-analyse</button>
+        </div>
+    </section>
+
+    <!-- ── Output Pane ──────────────────────────────────────────── -->
+    <section class="pane">
+
+        <!-- Dashboard -->
+        <div class="summary-card">
+            <div class="stat-box">
+                <h3>Roles</h3>
+                <p id="stat-roles">0</p>
+            </div>
+            <div class="stat-box">
+                <h3>Permissions</h3>
+                <p id="stat-perms">0</p>
+            </div>
+            <div class="stat-box">
+                <h3>Verdict</h3>
+                <div id="verdict-badge" class="badge">PENDING</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('tab-issues')">Issues</button>
+            <button class="tab-btn" onclick="switchTab('tab-tokens')">Tokens</button>
+            <button class="tab-btn" onclick="switchTab('tab-ast')">AST &amp; Symbols</button>
+            <button class="tab-btn" onclick="switchTab('tab-graph')">Hierarchy</button>
+        </div>
+
+        <!-- Issues tab -->
+        <div class="tab-content active" id="tab-issues">
+            <div class="filter-bar">
+                <label><input type="checkbox" id="filter-error" checked>
+                    Errors <span id="count-error" class="badge badge-error">0</span></label>
+                <label><input type="checkbox" id="filter-risk" checked>
+                    Risks <span id="count-risk" class="badge badge-warning">0</span></label>
+                <label><input type="checkbox" id="filter-warning" checked>
+                    Warnings <span id="count-warning" class="badge" style="background:#ffc107;color:#333;">0</span></label>
+                <button class="btn btn-sm" style="margin-left:auto;" onclick="downloadReport()">Export .txt</button>
+            </div>
+            <ul class="issue-list" id="issue-list">
+                <li class="empty-state">Run analysis to see results</li>
+            </ul>
+        </div>
+
+        <!-- Tokens tab -->
+        <div class="tab-content" id="tab-tokens">
+            <table class="data-table">
+                <thead><tr><th>Line</th><th>Type</th><th>Value</th></tr></thead>
+                <tbody id="token-tbody"></tbody>
+            </table>
+        </div>
+
+        <!-- AST tab -->
+        <div class="tab-content" id="tab-ast">
+            <h3 style="margin:.75rem 1rem .25rem;">AST Summary</h3>
+            <pre id="ast-pre" class="code-block"></pre>
+            <h3 style="margin:.5rem 1rem .25rem;">Symbol Table</h3>
+            <pre id="sym-pre" class="code-block"></pre>
+        </div>
+
+        <!-- Graph tab -->
+        <div class="tab-content" id="tab-graph">
+            <div id="d3-graph"></div>
+            <div class="graph-legend">
+                <span><span class="dot" style="background:#0d6efd;"></span>Normal</span>
+                <span><span class="dot" style="background:#dc3545;"></span>Cyclic</span>
+                <span><span class="dot" style="background:#fd7e14;"></span>High-priv</span>
+                <span style="margin-left:1rem;">― inherits &nbsp;&nbsp; - - conflict</span>
+            </div>
+        </div>
+
+    </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

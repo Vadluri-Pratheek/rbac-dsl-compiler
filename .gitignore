@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PLY generated files
+parser.out
+
+# Compiler output (generated at runtime)
+rbac_report.txt
+output/*
+!output/.gitkeep
+
+# Logs and temp files
+*.log
+*.tmp
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
