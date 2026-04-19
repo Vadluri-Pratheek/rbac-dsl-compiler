@@ -1,3 +1,0 @@
-"""
-Pytest init for tests
-"""
