@@ -1,128 +1,149 @@
-const editor       = document.getElementById('code-editor');
-const lineNums     = document.getElementById('line-numbers');
-const syntaxLayer  = document.getElementById('syntax-highlight');
-const errorLayer   = document.getElementById('error-lines');
-const btnFix       = document.getElementById('btn-fix');
-const editorView   = document.getElementById('editor-view');
-const splitView    = document.getElementById('split-view');
-const fixActions   = document.getElementById('fix-actions');
-const splitOrig    = document.getElementById('split-orig');
-const splitFixed   = document.getElementById('split-fixed');
-const fixSummary   = document.getElementById('fix-summary-text');
-const statRoles    = document.getElementById('stat-roles');
-const statPerms    = document.getElementById('stat-perms');
+const editor = document.getElementById('code-editor');
+const lineNums = document.getElementById('line-numbers');
+const syntaxLayer = document.getElementById('syntax-highlight');
+const errorLayer = document.getElementById('error-lines');
+const btnFix = document.getElementById('btn-fix');
+const editorView = document.getElementById('editor-view');
+const splitView = document.getElementById('split-view');
+const fixActions = document.getElementById('fix-actions');
+const splitOrig = document.getElementById('split-orig');
+const splitFixed = document.getElementById('split-fixed');
+const fixSummary = document.getElementById('fix-summary-text');
+const statRoles = document.getElementById('stat-roles');
+const statPerms = document.getElementById('stat-perms');
 const verdictBadge = document.getElementById('verdict-badge');
-const issueList    = document.getElementById('issue-list');
-const tokenTbody   = document.getElementById('token-tbody');
-const astPre       = document.getElementById('ast-pre');
-const symPre       = document.getElementById('sym-pre');
+const issueList = document.getElementById('issue-list');
+const tokenTbody = document.getElementById('token-tbody');
+const astPre = document.getElementById('ast-pre');
+const symPre = document.getElementById('sym-pre');
+const filterError = document.getElementById('filter-error');
+const filterWarning = document.getElementById('filter-warning');
+const filterRisk = document.getElementById('filter-risk');
+const countError = document.getElementById('count-error');
+const countWarning = document.getElementById('count-warning');
+const countRisk = document.getElementById('count-risk');
+const graphContainer = document.getElementById('d3-graph');
+
+const KEYWORD_PATTERN = /\b(role|inherits|permissions|conflict|assign|to)\b/g;
+
 let currentAnalysis = null;
-let currentFixes    = null;
+let currentFixes = null;
+let debounceTimer;
+let latestAnalysisRequest = 0;
+
 function escapeHtml(text) {
-    return text
+    return String(text ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 }
+
 function highlightCode(text) {
-    let html = escapeHtml(text);
-    html = html.replace(/(\/\/[^\n]*)/g, '<span class="c-comment">$1</span>');
-    html = html.replace(/\b(role|inherits|permissions|conflict|assign|to)\b/g, '<span class="c-keyword">$1</span>');
-    return html;
+    const escaped = escapeHtml(text);
+    const commentMatch = escaped.match(/(\/\/|#).*/);
+
+    if (!commentMatch) {
+        return escaped.replace(KEYWORD_PATTERN, '<span class="c-keyword">$1</span>');
+    }
+
+    const commentStart = commentMatch.index ?? escaped.length;
+    const codePart = escaped
+        .slice(0, commentStart)
+        .replace(KEYWORD_PATTERN, '<span class="c-keyword">$1</span>');
+    const commentPart = escaped.slice(commentStart);
+
+    return `${codePart}<span class="c-comment">${commentPart}</span>`;
 }
+
+function syncScroll() {
+    const top = editor.scrollTop;
+    const left = editor.scrollLeft;
+
+    lineNums.scrollTop = top;
+    syntaxLayer.scrollTop = top;
+    syntaxLayer.scrollLeft = left;
+    errorLayer.scrollTop = top;
+}
+
 function rebuildEditor() {
-    const text  = editor.value;
-    const lines = text.split('\n');
-    lineNums.innerHTML = lines.map((_, i) => `<div class="ln-row">${i + 1}</div>`).join('');
-    syntaxLayer.innerHTML = lines.map(l => `<div class="code-row">${highlightCode(l) || ' '}</div>`).join('');
+    const lines = editor.value.split('\n');
+    const gutterWidth = Math.max(36, String(lines.length).length * 10 + 14);
+
+    document.documentElement.style.setProperty('--line-number-width', `${gutterWidth}px`);
+    lineNums.innerHTML = lines.map((_, index) => `<div class="ln-row">${index + 1}</div>`).join('');
+    syntaxLayer.innerHTML = lines
+        .map((line) => `<div class="code-row">${highlightCode(line) || ' '}</div>`)
+        .join('');
+
     syncScroll();
 }
-function syncScroll() {
-    const t = editor.scrollTop;
-    const l = editor.scrollLeft;
-    lineNums.scrollTop     = t;
-    syntaxLayer.scrollTop  = t;
-    syntaxLayer.scrollLeft = l;
-    errorLayer.scrollTop   = t;
+
+function setFixMode(showSplitPane) {
+    editorView.style.display = showSplitPane ? 'none' : 'flex';
+    splitView.style.display = showSplitPane ? 'flex' : 'none';
+    fixActions.style.display = showSplitPane ? 'flex' : 'none';
+
+    if (!showSplitPane) {
+        splitOrig.value = '';
+        splitFixed.value = '';
+        fixSummary.textContent = '';
+    }
 }
-let debounceTimer;
-editor.addEventListener('input', () => {
-    rebuildEditor();
-    if (currentAnalysis) {
-        errorLayer.innerHTML = '';
-        verdictBadge.textContent = 'ANALYZING...';
-        verdictBadge.className = 'badge';
-    }
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-        if (editor.value.trim() === '') {
-            resetAnalysis();
-        } else {
-            analyzePolicy();
-        }
-    }, 600);
-});
-editor.addEventListener('scroll', syncScroll);
-editor.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab') {
-        e.preventDefault();
-        const start = editor.selectionStart;
-        const end   = editor.selectionEnd;
-        editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
-        editor.selectionStart = editor.selectionEnd = start + 4;
-        editor.dispatchEvent(new Event('input'));
-    }
-});
+
+function showGraphMessage(message) {
+    graphContainer.innerHTML = `<p class="graph-message">${escapeHtml(message)}</p>`;
+}
+
 function buildErrorOverlays(errors, warnings, risks) {
-    const text  = editor.value;
-    const lines = text.split('\n');
-    const lineClasses = {};   // lineNum -> class
-    const mark = (items, cls) => {
-        items.forEach(item => {
-            const ln = item.line;
-            if (ln >= 1 && ln <= lines.length) {
-                if (!lineClasses[ln] || cls === 'hl-error') lineClasses[ln] = cls;
+    const lines = editor.value.split('\n');
+    const lineClasses = {};
+
+    const mark = (items, className) => {
+        items.forEach((item) => {
+            const lineNumber = item.line;
+            if (lineNumber >= 1 && lineNumber <= lines.length) {
+                if (!lineClasses[lineNumber] || className === 'hl-error') {
+                    lineClasses[lineNumber] = className;
+                }
             }
         });
     };
-    mark(errors,   'hl-error');
-    mark(risks,    'hl-risk');
+
+    mark(errors, 'hl-error');
+    mark(risks, 'hl-risk');
     mark(warnings, 'hl-warning');
-    errorLayer.innerHTML = lines.map((_, i) => {
-        const ln = i + 1;
-        const cls = lineClasses[ln] || '';
-        return `<div class="code-row ${cls}" data-line="${ln}"></div>`;
-    }).join('');
+
+    errorLayer.innerHTML = lines
+        .map((_, index) => {
+            const lineNumber = index + 1;
+            const className = lineClasses[lineNumber] || '';
+            return `<div class="code-row ${className}" data-line="${lineNumber}"></div>`;
+        })
+        .join('');
+
     syncScroll();
 }
-function jumpToLine(lineNum) {
-    if (!lineNum || lineNum < 1) return;
+
+function jumpToLine(lineNumber) {
+    if (!lineNumber || lineNumber < 1) {
+        return;
+    }
+
     const firstRow = syntaxLayer.querySelector('.code-row');
-    const rowH = firstRow ? firstRow.offsetHeight : 20;
-    const target = (lineNum - 1) * rowH - editor.clientHeight / 2;
-    editor.scrollTop = Math.max(0, target);
+    const rowHeight = firstRow ? firstRow.offsetHeight : 20;
+    const targetScrollTop = (lineNumber - 1) * rowHeight - editor.clientHeight / 2;
+
+    editor.scrollTop = Math.max(0, targetScrollTop);
+    editor.focus();
     syncScroll();
-    const rows = errorLayer.querySelectorAll(`.code-row[data-line="${lineNum}"]`);
-    rows.forEach(r => {
-        r.classList.add('hl-pulse');
-        setTimeout(() => r.classList.remove('hl-pulse'), 1200);
+
+    const rows = errorLayer.querySelectorAll(`.code-row[data-line="${lineNumber}"]`);
+    rows.forEach((row) => {
+        row.classList.add('hl-pulse');
+        setTimeout(() => row.classList.remove('hl-pulse'), 1200);
     });
 }
-document.getElementById('file-upload').addEventListener('change', function (e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-        editor.value = ev.target.result;
-        rebuildEditor();
-        resetAnalysis();
-        if (editor.value.trim() !== '') {
-            analyzePolicy();
-        }
-        this.value = ''; // allow re-uploading same file
-    };
-    reader.readAsText(file);
-});
+
 function loadExample() {
     editor.value =
 `role Viewer {
@@ -137,203 +158,471 @@ role Admin inherits Editor {
 conflict Viewer, Admin
 assign Admin to Alice
 assign Viewer to Bob`;
+
     rebuildEditor();
     resetAnalysis();
     analyzePolicy();
 }
+
 function resetAnalysis() {
+    latestAnalysisRequest += 1;
     currentAnalysis = null;
-    currentFixes    = null;
+    currentFixes = null;
     btnFix.disabled = true;
-    verdictBadge.className   = 'badge';
+
+    setFixMode(false);
+    verdictBadge.className = 'badge';
     verdictBadge.textContent = 'PENDING';
     statRoles.textContent = '0';
     statPerms.textContent = '0';
     issueList.innerHTML = '<li class="empty-state">Run analysis to see results</li>';
+    tokenTbody.innerHTML = '';
+    astPre.textContent = '';
+    symPre.textContent = '';
     errorLayer.innerHTML = '';
-    document.getElementById('count-error').textContent   = '0';
-    document.getElementById('count-warning').textContent = '0';
-    document.getElementById('count-risk').textContent    = '0';
+    countError.textContent = '0';
+    countWarning.textContent = '0';
+    countRisk.textContent = '0';
+    showGraphMessage('Run analysis to visualise the role hierarchy.');
 }
+
 async function analyzePolicy() {
     const code = editor.value.trim();
-    if (!code) { alert('Editor is empty. Please type or upload a policy.'); return; }
+    if (!code) {
+        alert('Editor is empty. Please type or upload a policy.');
+        return;
+    }
+
+    const requestId = ++latestAnalysisRequest;
+    currentFixes = null;
+    setFixMode(false);
+    btnFix.disabled = true;
+    verdictBadge.textContent = 'ANALYZING...';
+    verdictBadge.className = 'badge';
+
+    let data;
     try {
-        const res  = await fetch('/analyze', {
+        const response = await fetch('/analyze', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({code})
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
         });
-        const data = await res.json();
-        currentAnalysis = data;
-        renderAnalysis(data);
-    } catch (err) {
+
+        if (!response.ok) {
+            throw new Error(`Analyze request failed with status ${response.status}`);
+        }
+
+        data = await response.json();
+    } catch (error) {
+        if (requestId !== latestAnalysisRequest) {
+            return;
+        }
+
         alert('Could not reach the backend. Make sure app.py is running.');
-        console.error(err);
+        console.error(error);
+        return;
+    }
+
+    if (requestId !== latestAnalysisRequest) {
+        return;
+    }
+
+    currentAnalysis = data;
+
+    try {
+        renderAnalysis(data);
+    } catch (error) {
+        console.error('Failed to render analysis results.', error);
+        alert('Analysis completed, but one or more panels could not be rendered. Check the browser console for details.');
     }
 }
+
 async function suggestFixes() {
-    if (!currentAnalysis) return;
+    if (!currentAnalysis || !currentAnalysis.success) {
+        alert('Fix suggestions are only available after a successful analysis.');
+        return;
+    }
+
     try {
-        const res  = await fetch('/fix', {
+        const response = await fetch('/fix', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({code: editor.value})
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: editor.value }),
         });
-        const data = await res.json();
+
+        if (!response.ok) {
+            throw new Error(`Fix request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
         if (data.success) {
             currentFixes = data;
             showSplitView();
         } else {
-            alert('Fix failed: ' + (data.error || 'unknown error'));
+            alert(`Fix failed: ${data.error || 'unknown error'}`);
         }
-    } catch (err) {
+    } catch (error) {
         alert('Could not reach the backend.');
-        console.error(err);
+        console.error(error);
     }
 }
+
 function renderAnalysis(data) {
-    const s = data.summary || {};
-    statRoles.textContent = s.roles ?? 0;
-    statPerms.textContent = s.permissions ?? 0;
-    verdictBadge.textContent = s.verdict || 'PENDING';
-    verdictBadge.className = 'badge ' + {
-        'SAFE':     'badge-success',
-        'UNSAFE':   'badge-error',
-        'WARNINGS': 'badge-warning',
-    }[s.verdict] ?? '';
-    const hasIssues = (data.errors && data.errors.length) ||
-                      (data.warnings && data.warnings.length) ||
-                      (data.risks && data.risks.length);
-    btnFix.disabled = !hasIssues;
-    buildErrorOverlays(data.errors || [], data.warnings || [], data.risks || []);
+    const errors = data.errors || [];
+    const warnings = data.warnings || [];
+    const risks = data.risks || [];
+    const summary = data.summary || {};
+    const verdictClasses = {
+        SAFE: 'badge-success',
+        UNSAFE: 'badge-error',
+        WARNINGS: 'badge-warning',
+    };
+    const verdictClass = verdictClasses[summary.verdict] || '';
+    const hasIssues = errors.length || warnings.length || risks.length;
+
+    statRoles.textContent = summary.roles ?? 0;
+    statPerms.textContent = summary.permissions ?? 0;
+    verdictBadge.textContent = summary.verdict || 'PENDING';
+    verdictBadge.className = verdictClass ? `badge ${verdictClass}` : 'badge';
+    btnFix.disabled = !data.success || !hasIssues;
+
+    buildErrorOverlays(errors, warnings, risks);
     renderIssues();
+
     tokenTbody.innerHTML = (data.tokens || [])
-        .map(t => `<tr><td>${t.line}</td><td>${escapeHtml(t.type)}</td><td>${escapeHtml(String(t.value))}</td></tr>`)
+        .map((token) => (
+            `<tr><td>${token.line}</td><td>${escapeHtml(token.type)}</td><td>${escapeHtml(String(token.value))}</td></tr>`
+        ))
         .join('');
+
     astPre.textContent = JSON.stringify(data.ast || {}, null, 2);
     symPre.textContent = JSON.stringify(data.symbol_table || {}, null, 2);
-    if (data.graph && data.graph.nodes.length > 0) renderGraph(data.graph);
-    else document.getElementById('d3-graph').innerHTML =
-        '<p style="padding:1rem;color:#888;">No roles to visualise.</p>';
+
+    if (data.graph && Array.isArray(data.graph.nodes) && data.graph.nodes.length > 0) {
+        renderGraph(data.graph);
+    } else {
+        showGraphMessage('No roles to visualise.');
+    }
 }
+
 function renderIssues() {
-    if (!currentAnalysis) return;
-    const showErr  = document.getElementById('filter-error').checked;
-    const showWarn = document.getElementById('filter-warning').checked;
-    const showRisk = document.getElementById('filter-risk').checked;
-    const errors   = currentAnalysis.errors   || [];
+    if (!currentAnalysis) {
+        return;
+    }
+
+    const errors = currentAnalysis.errors || [];
     const warnings = currentAnalysis.warnings || [];
-    const risks    = currentAnalysis.risks    || [];
-    document.getElementById('count-error').textContent   = errors.length;
-    document.getElementById('count-warning').textContent = warnings.length;
-    document.getElementById('count-risk').textContent    = risks.length;
+    const risks = currentAnalysis.risks || [];
+
+    countError.textContent = errors.length;
+    countWarning.textContent = warnings.length;
+    countRisk.textContent = risks.length;
+
     let html = '';
-    const addItems = (items, cls, label, show) => {
-        if (!show) return;
-        items.forEach(item => {
+    const addItems = (items, className, label, show) => {
+        if (!show) {
+            return;
+        }
+
+        items.forEach((item) => {
             html += `<li onclick="jumpToLine(${item.line})">
-                <div class="issue-badge ${cls}">${label}</div>
+                <div class="issue-badge ${className}">${label}</div>
                 <div class="issue-msg">${escapeHtml(item.message)}</div>
                 <div class="issue-line">Line ${item.line}</div>
             </li>`;
         });
     };
-    addItems(errors,   'error',   'ERROR', showErr);
-    addItems(risks,    'risk',    'RISK',  showRisk);
-    addItems(warnings, 'warning', 'WARN',  showWarn);
-    issueList.innerHTML = html || '<li class="empty-state">✅ No issues match current filters.</li>';
+
+    addItems(errors, 'error', 'ERROR', filterError.checked);
+    addItems(risks, 'risk', 'RISK', filterRisk.checked);
+    addItems(warnings, 'warning', 'WARN', filterWarning.checked);
+
+    issueList.innerHTML = html || '<li class="empty-state">No issues match the current filters.</li>';
 }
-document.getElementById('filter-error').addEventListener('change', renderIssues);
-document.getElementById('filter-warning').addEventListener('change', renderIssues);
-document.getElementById('filter-risk').addEventListener('change', renderIssues);
+
 function showSplitView() {
-    editorView.style.display = 'none';
-    splitView.style.display  = 'flex';
-    fixActions.style.display = 'flex';
-    splitOrig.value  = editor.value;
-    splitFixed.value = currentFixes.fixed_code;
+    if (!currentFixes) {
+        return;
+    }
+
+    setFixMode(true);
+    splitOrig.value = editor.value;
+    splitFixed.value = currentFixes.fixed_code || editor.value;
+
     const log = currentFixes.changelog || [];
-    const safe = log.filter(c => c.severity === 'SAFE').length;
-    const heur = log.filter(c => c.severity === 'HEURISTIC').length;
-    const dest = log.filter(c => c.severity === 'DESTRUCTIVE').length;
-    fixSummary.innerHTML = `<strong>Fix Summary:</strong> ${safe} Safe · ${heur} Heuristic · ${dest} Destructive changes`;
+    const safeCount = log.filter((entry) => entry.severity === 'SAFE').length;
+    const heuristicCount = log.filter((entry) => entry.severity === 'HEURISTIC').length;
+    const destructiveCount = log.filter((entry) => entry.severity === 'DESTRUCTIVE').length;
+
+    fixSummary.textContent = log.length
+        ? `Fix Summary: ${safeCount} safe | ${heuristicCount} heuristic | ${destructiveCount} destructive`
+        : 'No automatic changes were suggested.';
 }
+
 function cancelFix() {
-    editorView.style.display = 'flex';
-    splitView.style.display  = 'none';
-    fixActions.style.display = 'none';
     currentFixes = null;
+    setFixMode(false);
 }
+
 function applyFix() {
     editor.value = splitFixed.value;
     rebuildEditor();
     cancelFix();
     analyzePolicy();
 }
-function switchTab(tabId) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => { c.style.display = 'none'; c.classList.remove('active'); });
-    event.target.classList.add('active');
+
+function switchTab(tabId, button) {
+    document.querySelectorAll('.tab-btn').forEach((tabButton) => tabButton.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach((tabContent) => {
+        tabContent.style.display = 'none';
+        tabContent.classList.remove('active');
+    });
+
+    if (button) {
+        button.classList.add('active');
+    }
+
     const tab = document.getElementById(tabId);
     tab.style.display = 'flex';
     tab.classList.add('active');
+
+    if (
+        tabId === 'tab-graph' &&
+        currentAnalysis &&
+        currentAnalysis.graph &&
+        Array.isArray(currentAnalysis.graph.nodes) &&
+        currentAnalysis.graph.nodes.length > 0
+    ) {
+        renderGraph(currentAnalysis.graph);
+    }
 }
+
 function downloadReport() {
-    if (!currentAnalysis) { alert('Analyze first.'); return; }
-    const s = currentAnalysis.summary || {};
-    let txt  = 'RBAC Policy Verification Report\n================================\n\n';
-    if (currentAnalysis.errors.length)   txt += 'ERRORS:\n'   + currentAnalysis.errors.map(e => `  [Line ${e.line}] ${e.message}`).join('\n') + '\n\n';
-    if (currentAnalysis.risks.length)    txt += 'RISKS:\n'    + currentAnalysis.risks.map(e => `  [Line ${e.line}] ${e.message}`).join('\n') + '\n\n';
-    if (currentAnalysis.warnings.length) txt += 'WARNINGS:\n' + currentAnalysis.warnings.map(e => `  [Line ${e.line}] ${e.message}`).join('\n') + '\n\n';
-    txt += `Verdict: ${s.verdict}\nRoles: ${s.roles} | Permissions: ${s.permissions}\n`;
-    const blob = new Blob([txt], {type: 'text/plain'});
-    const a = Object.assign(document.createElement('a'), {href: URL.createObjectURL(blob), download: 'rbac_report.txt'});
-    a.click();
-    URL.revokeObjectURL(a.href);
+    if (!currentAnalysis) {
+        alert('Analyze first.');
+        return;
+    }
+
+    const summary = currentAnalysis.summary || {};
+    const errors = currentAnalysis.errors || [];
+    const risks = currentAnalysis.risks || [];
+    const warnings = currentAnalysis.warnings || [];
+    let text = 'RBAC Policy Verification Report\n================================\n\n';
+
+    if (errors.length) {
+        text += `ERRORS:\n${errors.map((entry) => `  [Line ${entry.line}] ${entry.message}`).join('\n')}\n\n`;
+    }
+    if (risks.length) {
+        text += `RISKS:\n${risks.map((entry) => `  [Line ${entry.line}] ${entry.message}`).join('\n')}\n\n`;
+    }
+    if (warnings.length) {
+        text += `WARNINGS:\n${warnings.map((entry) => `  [Line ${entry.line}] ${entry.message}`).join('\n')}\n\n`;
+    }
+
+    text += `Verdict: ${summary.verdict}\nRoles: ${summary.roles} | Permissions: ${summary.permissions}\n`;
+
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = Object.assign(document.createElement('a'), {
+        href: url,
+        download: 'rbac_report.txt',
+    });
+
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
 }
+
 function renderGraph(graphData) {
-    const container = document.getElementById('d3-graph');
-    container.innerHTML = '';
-    const W = container.clientWidth  || 600;
-    const H = container.clientHeight || 380;
-    const nodes = graphData.nodes.map(d => ({...d}));
-    const links = graphData.edges.map(d => ({source: d.from, target: d.to, type: d.type}));
-    const svg = d3.select('#d3-graph').append('svg')
-        .attr('width', W).attr('height', H);
-    svg.append('defs').selectAll('marker')
-        .data(['inherits', 'conflict']).join('marker')
-        .attr('id', d => `arr-${d}`)
-        .attr('viewBox', '0 -5 10 10').attr('refX', 22).attr('refY', 0)
-        .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto')
+    if (typeof d3 === 'undefined') {
+        showGraphMessage('Hierarchy graph unavailable because D3 failed to load. Other analysis results are still available.');
+        return;
+    }
+
+    const nodes = (graphData.nodes || []).map((node) => ({ ...node }));
+    if (nodes.length === 0) {
+        showGraphMessage('No roles to visualise.');
+        return;
+    }
+
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const links = (graphData.edges || [])
+        .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
+        .map((edge) => ({ source: edge.from, target: edge.to, type: edge.type }));
+
+    graphContainer.innerHTML = '';
+
+    const width = graphContainer.clientWidth || 600;
+    const height = graphContainer.clientHeight || 380;
+    const svg = d3.select('#d3-graph')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('viewBox', `0 0 ${width} ${height}`);
+
+    svg.append('defs')
+        .selectAll('marker')
+        .data(['inherits', 'conflict'])
+        .join('marker')
+        .attr('id', (type) => `arr-${type}`)
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 22)
+        .attr('refY', 0)
+        .attr('markerWidth', 7)
+        .attr('markerHeight', 7)
+        .attr('orient', 'auto')
         .append('path')
-        .attr('fill', d => d === 'conflict' ? '#dc3545' : '#888')
+        .attr('fill', (type) => (type === 'conflict' ? '#dc3545' : '#888'))
         .attr('d', 'M0,-5L10,0L0,5');
-    const sim = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(d => d.id).distance(120))
+
+    const simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links).id((node) => node.id).distance(120))
         .force('charge', d3.forceManyBody().strength(-350))
-        .force('center', d3.forceCenter(W / 2, H / 2));
-    const link = svg.append('g').selectAll('line').data(links).join('line')
-        .attr('stroke', d => d.type === 'conflict' ? '#dc3545' : '#888')
+        .force('center', d3.forceCenter(width / 2, height / 2));
+
+    const link = svg.append('g')
+        .selectAll('line')
+        .data(links)
+        .join('line')
+        .attr('stroke', (edge) => (edge.type === 'conflict' ? '#dc3545' : '#888'))
         .attr('stroke-width', 2)
-        .attr('stroke-dasharray', d => d.type === 'conflict' ? '6 3' : 'none')
-        .attr('marker-end', d => `url(#arr-${d.type})`);
-    const node = svg.append('g').selectAll('circle').data(nodes).join('circle')
+        .attr('stroke-dasharray', (edge) => (edge.type === 'conflict' ? '6 3' : 'none'))
+        .attr('marker-end', (edge) => `url(#arr-${edge.type})`);
+
+    const node = svg.append('g')
+        .selectAll('circle')
+        .data(nodes)
+        .join('circle')
         .attr('r', 14)
-        .attr('fill', d => d.color === 'cyclic' ? '#dc3545' : d.color === 'high_priv' ? '#fd7e14' : '#0d6efd')
-        .attr('stroke', '#fff').attr('stroke-width', 2)
-        .call(d3.drag()
-            .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-            .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
-            .on('end',   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
-    const label = svg.append('g').selectAll('text').data(nodes).join('text')
-        .text(d => d.id).attr('font-size', 12).attr('dx', 18).attr('dy', 4)
-        .attr('fill', '#333').attr('font-family', 'sans-serif');
-    sim.on('tick', () => {
-        link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-        node.attr('cx', d => d.x).attr('cy', d => d.y);
-        label.attr('x', d => d.x).attr('y', d => d.y);
+        .attr('fill', (entry) => (
+            entry.color === 'cyclic'
+                ? '#dc3545'
+                : entry.color === 'high_priv'
+                    ? '#fd7e14'
+                    : '#0d6efd'
+        ))
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 2)
+        .call(
+            d3.drag()
+                .on('start', (event, entry) => {
+                    if (!event.active) {
+                        simulation.alphaTarget(0.3).restart();
+                    }
+                    entry.fx = entry.x;
+                    entry.fy = entry.y;
+                })
+                .on('drag', (event, entry) => {
+                    entry.fx = event.x;
+                    entry.fy = event.y;
+                })
+                .on('end', (event, entry) => {
+                    if (!event.active) {
+                        simulation.alphaTarget(0);
+                    }
+                    entry.fx = null;
+                    entry.fy = null;
+                })
+        );
+
+    const label = svg.append('g')
+        .selectAll('text')
+        .data(nodes)
+        .join('text')
+        .text((entry) => entry.id)
+        .attr('font-size', 12)
+        .attr('dx', 18)
+        .attr('dy', 4)
+        .attr('fill', '#333')
+        .attr('font-family', 'sans-serif');
+
+    simulation.on('tick', () => {
+        link
+            .attr('x1', (edge) => edge.source.x)
+            .attr('y1', (edge) => edge.source.y)
+            .attr('x2', (edge) => edge.target.x)
+            .attr('y2', (edge) => edge.target.y);
+
+        node
+            .attr('cx', (entry) => entry.x)
+            .attr('cy', (entry) => entry.y);
+
+        label
+            .attr('x', (entry) => entry.x)
+            .attr('y', (entry) => entry.y);
     });
 }
+
+editor.addEventListener('input', () => {
+    rebuildEditor();
+
+    if (currentAnalysis) {
+        errorLayer.innerHTML = '';
+        verdictBadge.textContent = 'ANALYZING...';
+        verdictBadge.className = 'badge';
+        btnFix.disabled = true;
+    }
+
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+        if (editor.value.trim() === '') {
+            resetAnalysis();
+        } else {
+            analyzePolicy();
+        }
+    }, 600);
+});
+
+editor.addEventListener('scroll', syncScroll);
+editor.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab') {
+        event.preventDefault();
+        const start = editor.selectionStart;
+        const end = editor.selectionEnd;
+
+        editor.value = `${editor.value.substring(0, start)}    ${editor.value.substring(end)}`;
+        editor.selectionStart = start + 4;
+        editor.selectionEnd = start + 4;
+        editor.dispatchEvent(new Event('input'));
+    }
+});
+
+document.getElementById('file-upload').addEventListener('change', function (event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => {
+        editor.value = loadEvent.target.result;
+        rebuildEditor();
+        resetAnalysis();
+
+        if (editor.value.trim() !== '') {
+            analyzePolicy();
+        }
+
+        this.value = '';
+    };
+
+    reader.readAsText(file);
+});
+
+filterError.addEventListener('change', renderIssues);
+filterWarning.addEventListener('change', renderIssues);
+filterRisk.addEventListener('change', renderIssues);
+
+window.addEventListener('resize', () => {
+    if (
+        document.getElementById('tab-graph').classList.contains('active') &&
+        currentAnalysis &&
+        currentAnalysis.graph &&
+        Array.isArray(currentAnalysis.graph.nodes) &&
+        currentAnalysis.graph.nodes.length > 0
+    ) {
+        renderGraph(currentAnalysis.graph);
+    }
+});
+
 rebuildEditor();
+resetAnalysis();

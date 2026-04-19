@@ -103,7 +103,7 @@ def apply_fixes(
                 fix_type    = "REDUNDANT_ASSIGN_REMOVED",
                 description = (
                     f"Removed duplicate assignment: role '{meta.get('role', '?')}' "
-                    f"→ user '{meta.get('user', '?')}' (already assigned earlier)."
+                    f"-> user '{meta.get('user', '?')}' (already assigned earlier)."
                 ),
                 meta = meta,
             ))
@@ -128,7 +128,7 @@ def apply_fixes(
                 action      = "remove_line",
                 fix_type    = "VACUOUS_CONFLICT_REMOVED",
                 description = (
-                    f"Removed conflict rule — role '{meta.get('unknown_role', '?')}' "
+                    f"Removed conflict rule - role '{meta.get('unknown_role', '?')}' "
                     f"is undefined, making the rule vacuous."
                 ),
                 meta = meta,
@@ -142,7 +142,7 @@ def apply_fixes(
                 fix_type    = "SELF_INHERIT_FIXED",
                 description = (
                     f"[DESTRUCTIVE] Removed 'inherits {meta.get('role', '?')}' "
-                    f"from role '{meta.get('role', '?')}' — self-inheritance is "
+                    f"from role '{meta.get('role', '?')}' - self-inheritance is "
                     f"structurally invalid."
                 ),
                 meta = meta,
@@ -171,7 +171,7 @@ def apply_fixes(
                 fix_type    = "INHERITS_UNDEFINED_FIXED",
                 description = (
                     f"[DESTRUCTIVE] Removed 'inherits {meta.get('parent', '?')}' from "
-                    f"role '{meta.get('role', '?')}' — '{meta.get('parent', '?')}' is "
+                    f"role '{meta.get('role', '?')}' - '{meta.get('parent', '?')}' is "
                     f"undefined.  Conservative removal applied; alternatively, define "
                     f"'{meta.get('parent', '?')}' as a new role."
                 ),
@@ -186,7 +186,7 @@ def apply_fixes(
                 fix_type    = "UNDEFINED_ASSIGN_REMOVED",
                 description = (
                     f"[DESTRUCTIVE] Removed 'assign {meta.get('role', '?')} to "
-                    f"{meta.get('user', '?')}' — role '{meta.get('role', '?')}' is "
+                    f"{meta.get('user', '?')}' - role '{meta.get('role', '?')}' is "
                     f"undefined.  Conservative removal; alternatively, define the "
                     f"role '{meta.get('role', '?')}' first."
                 ),
@@ -201,7 +201,7 @@ def apply_fixes(
                 fix_type    = "REDUNDANT_INHERITED_PERM_REMOVED",
                 description = (
                     f"[DESTRUCTIVE] Removed permission '{meta.get('perm', '?')}' "
-                    f"from role '{meta.get('role', '?')}' — already inherited from "
+                    f"from role '{meta.get('role', '?')}' - already inherited from "
                     f"parent chain.  Verify that downstream permission logic is unaffected."
                 ),
                 meta = meta,
@@ -216,7 +216,7 @@ def apply_fixes(
                 description = (
                     f"User '{meta.get('user', '?')}' holds both conflicting roles "
                     f"'{meta.get('role1', '?')}' and '{meta.get('role2', '?')}'. "
-                    f"Manual review required — remove one of the assignment statements."
+                    f"Manual review required - remove one of the assignment statements."
                 ),
                 meta = meta,
             ))
@@ -230,7 +230,7 @@ def apply_fixes(
                 description = (
                     f"Role '{meta.get('role', '?')}' inherits high-privilege role "
                     f"'{meta.get('parent', '?')}'. This inheritance may be intentional "
-                    f"— manual review required before removing it."
+                    f"- manual review required before removing it."
                 ),
                 meta = meta,
             ))
@@ -351,7 +351,7 @@ def format_changelog(
     def _section(title: str, entries: List[Dict]) -> None:
         if not entries:
             return
-        lines.append(f"  ── {title} ({'─' * max(0, header_width - len(title) - 6)})")
+        lines.append(f"  -- {title} ({'-' * max(0, header_width - len(title) - 6)})")
         for e in entries:
             ln_str   = f"Line {e['line']:>3}" if e["line"] else "Line   ?"
             sev_lbl  = _SEVERITY_LABEL.get(e["severity"], "[?       ]")
@@ -360,8 +360,8 @@ def format_changelog(
         lines.append("")
 
     _section("SAFE FIXES (applied automatically)", safe_entries)
-    _section("DESTRUCTIVE FIXES (applied — destructive, review carefully)", destructive_entries)
-    _section("HEURISTIC ANNOTATIONS (code annotated only — NOT modified)", heuristic_entries)
+    _section("DESTRUCTIVE FIXES (applied - destructive, review carefully)", destructive_entries)
+    _section("HEURISTIC ANNOTATIONS (code annotated only - NOT modified)", heuristic_entries)
 
     lines.append(
         f"  Totals: {len(safe_entries)} SAFE | "

@@ -4,7 +4,13 @@ from flask import Flask, request, jsonify, render_template
 from src.lexer import RBACLexer
 from src.parser import RBACParser, RoleNode, AssignmentNode, ConflictNode
 from src.semantic import analyze_program, get_structured_errors
-from src.security import run_security_checks, get_structured_warnings
+from src.security import (
+    run_security_checks,
+    get_structured_warnings,
+    find_cyclic_roles,
+    has_dangerous_permission,
+    is_high_privilege_role_name,
+)
 from src.fixer import apply_fixes
 
 app = Flask(__name__)
@@ -90,10 +96,12 @@ def analyze_source_code(code):
     warnings = []
     risks = []
     for warn in sec_warnings:
-        if "escalation" in warn["issue_type"] or "conflict" in warn["issue_type"]:
-            risks.append({"line": warn["line"], "message": warn["desc"], "category": "risk"})
+        warn_type = warn.get("issue_type") or warn.get("type", "")
+        warn_message = warn.get("desc") or warn.get("message", "")
+        if "escalation" in warn_type.lower() or "conflict" in warn_type.lower():
+            risks.append({"line": warn["line"], "message": warn_message, "category": "risk"})
         else:
-            warnings.append({"line": warn["line"], "message": warn["desc"], "category": "warning"})
+            warnings.append({"line": warn["line"], "message": warn_message, "category": "warning"})
 
     symbol_table = {}
     for name, r in roles.items():
@@ -102,14 +110,30 @@ def analyze_source_code(code):
             "inherits": r.inherits,
         }
 
+    valid_role_names = set(roles.keys())
+    cyclic_roles = find_cyclic_roles(roles)
+    high_priv_roles = {
+        name
+        for name, role in roles.items()
+        if is_high_privilege_role_name(name) or has_dangerous_permission(role.permissions or [])
+    }
+
     graph_nodes = []
     graph_edges = []
     for name, r in roles.items():
-        graph_nodes.append({"id": name, "color": "normal"})
-        if r.inherits:
+        color = "normal"
+        if name in cyclic_roles:
+            color = "cyclic"
+        elif name in high_priv_roles:
+            color = "high_priv"
+
+        graph_nodes.append({"id": name, "color": color})
+        if r.inherits and r.inherits in valid_role_names:
             graph_edges.append({"from": r.inherits, "to": name, "type": "inherits"})
+
     for c in conflicts:
-        graph_edges.append({"from": c.role1, "to": c.role2, "type": "conflict"})
+        if c.role1 in valid_role_names and c.role2 in valid_role_names:
+            graph_edges.append({"from": c.role1, "to": c.role2, "type": "conflict"})
 
     ast_dump = {
         "roles": list(roles.keys()),
