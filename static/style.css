@@ -120,7 +120,7 @@ body {
 }
 #syntax-highlight {
     position: absolute;
-    top: 0; left: 0; right: 0;
+    top: 0; left: 0; right: 0; bottom: 0;
     padding: .5rem;
     white-space: pre;
     overflow: hidden;
@@ -131,7 +131,7 @@ body {
 .c-comment { color: #6a737d; font-style: italic; }
 #error-lines {
     position: absolute;
-    top: 0; left: 0; right: 0;
+    top: 0; left: 0; right: 0; bottom: 0;
     padding: .5rem;
     overflow: hidden;
 }
@@ -356,4 +356,78 @@ body {
     .split-pane:last-child {
         border-bottom: none;
     }
+}
+
+/* Modal Styles */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.active {
+    display: flex;
+}
+.modal-content {
+    background: #fff;
+    width: 450px;
+    max-width: 90%;
+    max-height: 80vh;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.modal-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+}
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+    color: var(--muted);
+}
+.close-btn:hover {
+    color: var(--text);
+}
+.modal-body {
+    padding: 1rem 1.25rem;
+    overflow-y: auto;
+}
+#roles-details-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+#roles-details-list li {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+}
+#roles-details-list li:last-child {
+    border-bottom: none;
+}
+.role-name {
+    font-weight: 600;
+    color: var(--primary);
+    font-family: var(--font-mono);
+}
+.role-perms {
+    font-size: 0.85rem;
+    color: var(--text);
+    margin-top: 0.4rem;
 }

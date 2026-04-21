@@ -58,7 +58,10 @@
     <section class="pane">
         <div class="summary-card">
             <div class="stat-box">
-                <h3>Roles</h3>
+                <h3 style="display:flex; justify-content:center; align-items:center; gap: 0.5rem;">
+                    Roles
+                    <button class="btn btn-secondary" style="padding: 0.1rem 0.4rem; font-size: 0.65rem;" onclick="showRolesDetails()">View</button>
+                </h3>
                 <p id="stat-roles">0</p>
             </div>
             <div class="stat-box">
@@ -118,6 +121,18 @@
         </div>
     </section>
 </main>
+
+<div id="roles-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Roles & Permissions Reference</h2>
+            <button class="close-btn" onclick="closeRolesModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <ul id="roles-details-list"></ul>
+        </div>
+    </div>
+</div>
 
 <script src="/static/app.js"></script>
 </body>

@@ -40,6 +40,14 @@ function escapeHtml(text) {
 
 function highlightCode(text) {
     const escaped = escapeHtml(text);
+
+    // Check for block comment spanning this line (starts with *)
+    const trimmed = text.trim();
+    if (trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.startsWith('*/')) {
+        return `<span class="c-comment">${escaped}</span>`;
+    }
+
+    // Check for line comments (// or #)
     const commentMatch = escaped.match(/(\/\/|#).*/);
 
     if (!commentMatch) {
@@ -238,8 +246,8 @@ async function analyzePolicy() {
 }
 
 async function suggestFixes() {
-    if (!currentAnalysis || !currentAnalysis.success) {
-        alert('Fix suggestions are only available after a successful analysis.');
+    if (!currentAnalysis) {
+        alert('Run analysis first before requesting fixes.');
         return;
     }
 
@@ -337,7 +345,12 @@ function renderIssues() {
     addItems(risks, 'risk', 'RISK', filterRisk.checked);
     addItems(warnings, 'warning', 'WARN', filterWarning.checked);
 
-    issueList.innerHTML = html || '<li class="empty-state">No issues match the current filters.</li>';
+    const totalIssues = errors.length + risks.length + warnings.length;
+    const emptyMsg = totalIssues === 0
+        ? '<li class="empty-state">No issues found — policy looks solid!</li>'
+        : '<li class="empty-state">No issues match the current filters.</li>';
+
+    issueList.innerHTML = html || emptyMsg;
 }
 
 function showSplitView() {
@@ -374,7 +387,7 @@ function applyFix() {
 function switchTab(tabId, button) {
     document.querySelectorAll('.tab-btn').forEach((tabButton) => tabButton.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach((tabContent) => {
-        tabContent.style.display = 'none';
+        // Use class toggling only — never set inline display style so CSS rules aren't overridden
         tabContent.classList.remove('active');
     });
 
@@ -383,7 +396,6 @@ function switchTab(tabId, button) {
     }
 
     const tab = document.getElementById(tabId);
-    tab.style.display = 'flex';
     tab.classList.add('active');
 
     if (
@@ -453,6 +465,35 @@ function renderGraph(graphData) {
 
     const width = graphContainer.clientWidth || 600;
     const height = graphContainer.clientHeight || 380;
+    const nodeRadius = 14;
+    const graphPadding = 24;
+    const labelGap = 18;
+    const approxLabelCharWidth = 7;
+    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+    const estimateLabelWidth = (entry) => Math.max(40, String(entry.id || '').length * approxLabelCharWidth);
+    const constrainNode = (entry) => {
+        entry.x = clamp(entry.x ?? width / 2, nodeRadius + graphPadding, width - nodeRadius - graphPadding);
+        entry.y = clamp(entry.y ?? height / 2, nodeRadius + graphPadding, height - nodeRadius - graphPadding);
+    };
+    const getLabelPlacement = (entry) => {
+        const labelWidth = estimateLabelWidth(entry);
+        const rightX = entry.x + labelGap;
+        const leftX = entry.x - labelGap;
+
+        if (rightX + labelWidth <= width - graphPadding) {
+            return { x: rightX, anchor: 'start' };
+        }
+
+        if (leftX - labelWidth >= graphPadding) {
+            return { x: leftX, anchor: 'end' };
+        }
+
+        return {
+            x: clamp(entry.x, graphPadding + labelWidth / 2, width - graphPadding - labelWidth / 2),
+            anchor: 'middle',
+        };
+    };
+
     const svg = d3.select('#d3-graph')
         .append('svg')
         .attr('width', width)
@@ -477,7 +518,10 @@ function renderGraph(graphData) {
     const simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(links).id((node) => node.id).distance(120))
         .force('charge', d3.forceManyBody().strength(-350))
-        .force('center', d3.forceCenter(width / 2, height / 2));
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collide', d3.forceCollide().radius(nodeRadius + 24))
+        .force('x', d3.forceX(width / 2).strength(0.06))
+        .force('y', d3.forceY(height / 2).strength(0.06));
 
     const link = svg.append('g')
         .selectAll('line')
@@ -492,7 +536,7 @@ function renderGraph(graphData) {
         .selectAll('circle')
         .data(nodes)
         .join('circle')
-        .attr('r', 14)
+        .attr('r', nodeRadius)
         .attr('fill', (entry) => (
             entry.color === 'cyclic'
                 ? '#dc3545'
@@ -512,8 +556,8 @@ function renderGraph(graphData) {
                     entry.fy = entry.y;
                 })
                 .on('drag', (event, entry) => {
-                    entry.fx = event.x;
-                    entry.fy = event.y;
+                    entry.fx = clamp(event.x, nodeRadius + graphPadding, width - nodeRadius - graphPadding);
+                    entry.fy = clamp(event.y, nodeRadius + graphPadding, height - nodeRadius - graphPadding);
                 })
                 .on('end', (event, entry) => {
                     if (!event.active) {
@@ -536,6 +580,8 @@ function renderGraph(graphData) {
         .attr('font-family', 'sans-serif');
 
     simulation.on('tick', () => {
+        nodes.forEach(constrainNode);
+
         link
             .attr('x1', (edge) => edge.source.x)
             .attr('y1', (edge) => edge.source.y)
@@ -547,8 +593,9 @@ function renderGraph(graphData) {
             .attr('cy', (entry) => entry.y);
 
         label
-            .attr('x', (entry) => entry.x)
-            .attr('y', (entry) => entry.y);
+            .attr('x', (entry) => getLabelPlacement(entry).x)
+            .attr('y', (entry) => clamp(entry.y + 4, graphPadding + 12, height - graphPadding))
+            .attr('text-anchor', (entry) => getLabelPlacement(entry).anchor);
     });
 }
 
@@ -626,3 +673,37 @@ window.addEventListener('resize', () => {
 
 rebuildEditor();
 resetAnalysis();
+
+function showRolesDetails() {
+    const list = document.getElementById('roles-details-list');
+    list.innerHTML = '';
+    
+    if (!currentAnalysis || !currentAnalysis.symbol_table) {
+        list.innerHTML = '<li class="empty-state">No roles to display. Load or analyze a policy first.</li>';
+    } else {
+        const ObjectKeys = Object.keys(currentAnalysis.symbol_table);
+        
+        if (ObjectKeys.length === 0) {
+            list.innerHTML = '<li class="empty-state">No roles defined in the current policy.</li>';
+        } else {
+            ObjectKeys.forEach(roleName => {
+                const roleData = currentAnalysis.symbol_table[roleName];
+                const perms = roleData.permissions || [];
+                const inherits = roleData.inherits ? ` (inherits <span style="color:#666;">${escapeHtml(roleData.inherits)}</span>)` : '';
+                
+                list.innerHTML += `
+                    <li>
+                        <div class="role-name">${escapeHtml(roleName)}${inherits}</div>
+                        <div class="role-perms"><strong>Permissions:</strong> ${perms.length > 0 ? escapeHtml(perms.join(', ')) : '<span style="color:#888;">None explicitly defined</span>'}</div>
+                    </li>
+                `;
+            });
+        }
+    }
+    
+    document.getElementById('roles-modal').classList.add('active');
+}
+
+function closeRolesModal() {
+    document.getElementById('roles-modal').classList.remove('active');
+}
